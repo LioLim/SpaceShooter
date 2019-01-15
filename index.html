@@ -1543,20 +1543,26 @@ document.addEventListener("keyup", function(e) {
 
 // Mouse Detection
 
-document.addEventListener("mousemove", function(e) {
+document.addEventListener("mousemove", mousemove);
+document.addEventListener("ontouchmove", mousemove);
+function mousemove(e) {
 	var rect = cvs.getBoundingClientRect();
 	mouse.x = e.clientX - rect.left;
 	mouse.y = e.clientY - rect.top;
-});
+}
 
-document.addEventListener("mousedown", function(e) {
+document.addEventListener("mousedown", mousedown);
+document.addEventListener("ontouchstart", mousedown);
+function mousedown(e) {
 	mouse.down = true;
 	mouse.click = true;
-});
+}
 
-document.addEventListener("mouseup", function(e) {
+document.addEventListener("mouseup", mouseup);
+document.addEventListener("ontouchend", mouseup);
+function mouseup(e) {
 	mouse.down = false;
-});
+}
 
 }
 
