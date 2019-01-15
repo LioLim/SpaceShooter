@@ -1,0 +1,1564 @@
+<html>
+<title>SEIZE</title>
+
+<style>
+html {
+	background-color: black;
+}
+
+@font-face {
+  font-family: "Future";
+  src: url("kenney_spaceshooter/Bonus/kenvector_future.ttf");
+}
+
+canvas {
+	cursor: crosshair;
+}
+</style>
+
+<center>
+	<canvas 
+		id = "gameCanvas" 
+		width = "500"
+		height = "500"
+		style = "border: 2px solid #FFFFFF"
+		oncontextmenu = "return false;"
+		tabindex = "0"
+	/>
+</center>
+
+<script>
+
+// init
+
+var cvs = document.getElementById("gameCanvas");
+var ctx = cvs.getContext("2d");
+var preZoom = 1;
+ctx.scale(1/preZoom, 1/preZoom);
+ctx.translate(cvs.width*(preZoom/2-0.5), cvs.height*(preZoom/2-0.5));
+var zoom = 1;
+ctx.font = "20px Future";
+ctx.fillText("test", 0, 0);
+var exitRadius = function() {
+	return cvs.width*zoom;
+}
+
+// Sprites
+
+var spriteList = [];
+var totalSprites = 0;
+function sprite(src) {
+	var img = new Image();
+	img.src = src;
+	spriteList.push(img);
+	img.onload = function() {
+		spriteList.splice(spriteList.indexOf(img), 1);
+		console.log("Loading sprites " + (totalSprites - spriteList.length) + "/" + totalSprites);
+		if (spriteList.length == 0) { 
+			console.clear();
+			console.log("All sprites loaded!");
+			document.fonts.ready.then(function() {
+				console.log("All fonts loaded!");
+				start();
+			});
+		}
+	}
+	return img;
+}
+
+var bg = [
+	sprite("kenney_spaceshooter/Backgrounds/black.png"),
+	sprite("kenney_spaceshooter/Backgrounds/blue.png"),
+	sprite("kenney_spaceshooter/Backgrounds/darkPurple.png"),
+	sprite("kenney_spaceshooter/Backgrounds/purple.png")
+];
+var sMouse = sprite("kenney_spaceshooter/PNG/UI/cursor.png");
+
+var sBase = sprite("kenney_spaceshooter/PNG/ufoBlue.png");
+var sUpgradeList = [
+	sprite("kenney_spaceshooter/PNG/Power-ups/bolt_gold.png"),
+	sprite("kenney_spaceshooter/PNG/Power-ups/pill_yellow.png"),
+	sprite("kenney_spaceshooter/PNG/Power-ups/shield_gold.png"),
+	sprite("kenney_spaceshooter/PNG/Power-ups/star_gold.png"),
+	sprite("kenney_spaceshooter/PNG/Power-ups/things_gold.png")
+];
+
+var sPlayer = sprite("kenney_spaceshooter/PNG/playerShip1_blue.png");
+var sPlayerLife = sprite("kenney_spaceshooter/PNG/UI/playerLife1_blue.png");
+var sShieldIcon = sprite("kenney_spaceshooter/PNG/Power-ups/powerupBlue_shield.png");
+var sBlueIcon = sprite("kenney_spaceshooter/PNG/Power-ups/powerupBlue.png");
+var sShieldList = [
+	sprite("kenney_spaceshooter/PNG/Effects/shield1.png"),
+	sprite("kenney_spaceshooter/PNG/Effects/shield2.png"),
+	sprite("kenney_spaceshooter/PNG/Effects/shield3.png")
+];
+
+var sBullet 		= sprite("kenney_spaceshooter/PNG/Lasers/laserBlue01.png");
+var sBulletHit		= sprite("kenney_spaceshooter/PNG/Lasers/laserBlue08.png");
+var sEnemyBullet 	= sprite("kenney_spaceshooter/PNG/Lasers/laserRed06.png");
+var sEnemyBulletHit = sprite("kenney_spaceshooter/PNG/Lasers/laserRed08.png");
+
+var sMeteorList = {
+	big:   [sprite("kenney_spaceshooter/PNG/Meteors/meteorBrown_big1.png"),
+		    sprite("kenney_spaceshooter/PNG/Meteors/meteorBrown_big2.png"),
+		    sprite("kenney_spaceshooter/PNG/Meteors/meteorBrown_big3.png"),
+		    sprite("kenney_spaceshooter/PNG/Meteors/meteorBrown_big4.png")],
+	med:   [sprite("kenney_spaceshooter/PNG/Meteors/meteorBrown_med1.png"),
+		    sprite("kenney_spaceshooter/PNG/Meteors/meteorBrown_med2.png")],
+	small: [sprite("kenney_spaceshooter/PNG/Meteors/meteorBrown_small1.png"),
+		    sprite("kenney_spaceshooter/PNG/Meteors/meteorBrown_small2.png")],
+	tiny:  [sprite("kenney_spaceshooter/PNG/Meteors/meteorBrown_tiny1.png"),
+		    sprite("kenney_spaceshooter/PNG/Meteors/meteorBrown_tiny2.png")]
+}
+
+var sEnemyBase = sprite("kenney_spaceshooter/PNG/ufoRed.png");
+var sEnemyBoss = sprite("kenney_spaceshooter/PNG/playerShip1_red.png");
+var sRedShieldIcon = sprite("kenney_spaceshooter/PNG/Power-ups/powerupRed_shield.png");
+var sRedIcon = sprite("kenney_spaceshooter/PNG/Power-ups/powerupRed.png");
+var sEnemyList = [
+	sprite("kenney_spaceshooter/PNG/Enemies/enemyBlack1.png"),
+	sprite("kenney_spaceshooter/PNG/Enemies/enemyBlack2.png"),
+	sprite("kenney_spaceshooter/PNG/Enemies/enemyBlack3.png"),
+	sprite("kenney_spaceshooter/PNG/Enemies/enemyBlack4.png"),
+	sprite("kenney_spaceshooter/PNG/Enemies/enemyBlack5.png")
+];
+
+var sSpeed = sprite("kenney_spaceshooter/PNG/Effects/speed.png");
+
+var sStarList = [
+	sprite("kenney_spaceshooter/PNG/Effects/star1.png"),
+	sprite("kenney_spaceshooter/PNG/Effects/star2.png"),
+	sprite("kenney_spaceshooter/PNG/Effects/star3.png")
+];
+
+totalSprites = spriteList.length;
+
+// Sound
+
+function Sound(src) {
+	this.sound = document.createElement("audio");
+	this.sound.src = src;
+	this.sound.setAttribute("preload", "auto");
+	this.sound.setAttribute("controls", "none");
+	this.sound.style.display = "none";
+	document.body.appendChild(this.sound);
+	this.play = function() {
+		this.sound.currentTime = 0;
+		this.sound.play();
+	}
+	this.stop = function() { this.sound.pause(); }
+	this.loop = function() {
+		this.sound.addEventListener("ended", function() {
+			this.play();
+		}, false);
+	}
+	this.volume = function(v) {	this.sound.volume = v; }
+}
+
+var sfx_laser1 = new Sound("kenney_spaceshooter/Bonus/sfx_laser1.ogg");
+var sfx_laser2 = new Sound("kenney_spaceshooter/Bonus/sfx_laser2.ogg");
+var sfx_lose = new Sound("kenney_spaceshooter/Bonus/sfx_lose.ogg");
+var sfx_shieldDown = new Sound("kenney_spaceshooter/Bonus/sfx_shieldDown.ogg");
+var sfx_shieldUp = new Sound("kenney_spaceshooter/Bonus/sfx_shieldUp.ogg");
+var sfx_twoTone = new Sound("kenney_spaceshooter/Bonus/sfx_twoTone.ogg");
+var sfx_zap = new Sound("kenney_spaceshooter/Bonus/sfx_zap.ogg");
+var sfx_explode = new Sound("kenney_spaceshooter/Bonus/sfx_explode.ogg");
+
+sfx_laser1.volume(0.1);
+sfx_laser2.volume(0.1);
+sfx_explode.volume(0.5);
+
+// Start!
+
+function start() {
+
+// Remaining Sprites
+
+var sUpgrade = function(type) { return sUpgradeList[type]; }
+var sShield  = function(size) { return sShieldList[size]; }
+var sMeteor  = function(size) { return randomFromArray(sMeteorList[size]); }
+var sEnemy   = function(type) { return sEnemyList[type]; }
+var sStar  = function() { return randomFromArray(sStarList); }
+
+// Objects
+
+var center = {x:cvs.width/2, y:cvs.height/2};
+var mouse  = {x:center.x, y:center.y, down:false, click:false};
+
+var money = 0;
+var score = 0;
+var gameOver = false;
+function Player() {
+	this.x = 0;
+	this.y = -200;
+	this.angle = 0;
+	this.vx = 0;
+	this.vy = 0;
+	this.acc = 0.1;
+	this.speedMax = 3;
+	this.rate = 5; // Rate of Fire - bullets per sec
+	this.power = 1; // Number of Bullets
+	this.damage = 10; // Damage per Bullet
+	this.bulletSize = 1;
+	this.bulletSpeed = 20;
+	this.lastBulletTime = 0;
+	
+	this.sprite = sPlayer;
+	this.w = this.sprite.width;
+	this.h = this.sprite.height;
+	this.r = Math.round((this.w + this.h) / 4);
+	this.hp = 3;
+	this.hpMax = 3;
+	
+	this.shieldSprite = sShield(2);
+	this.shield = 1;
+	this.shieldMax = 1;
+	this.shieldRegen = 0.005;
+	this.shieldCd = 3000;
+	this.lastHitTime = 0;
+	
+	this.draw = function() {
+		ctx.save();
+		ctx.translate(cvs.width/2, cvs.height/2);
+		ctx.rotate(this.angle);
+		ctx.drawImage(this.sprite, -this.sprite.width/2, -this.sprite.height/2);
+		if (this.shield >= 1) {
+			ctx.drawImage(this.shieldSprite, -this.shieldSprite.width/2, -this.shieldSprite.height/2);
+		}
+		ctx.rotate(Math.PI);
+		var speed = Math.abs(this.vx) + Math.abs(this.vy);
+		var x = sSpeed.width;
+		var y = sSpeed.height*speed/5;
+		ctx.drawImage(sSpeed, -x/2 - 45, -y, x, y);
+		ctx.drawImage(sSpeed, -x/2 + 45, -y, x, y);
+		ctx.restore();
+	}
+	
+	this.move = function() {
+		this.angle = angleBetween(center, mouse);
+		var pointOfRef = "camera";
+		if (!keyDownList) {
+		} else if (pointOfRef == "player") {
+			if (keyDownList["w"]) {
+				this.vx += Math.sin(this.angle)*this.acc;
+				this.vy -= Math.cos(this.angle)*this.acc;
+			}
+			if (keyDownList["a"]) {
+				this.vx -= Math.cos(this.angle)*this.acc;
+				this.vy -= Math.sin(this.angle)*this.acc;
+			}
+			if (keyDownList["s"]) {
+				this.vx -= Math.sin(this.angle)*this.acc;
+				this.vy += Math.cos(this.angle)*this.acc;
+			}
+			if (keyDownList["d"]) {
+				this.vx += Math.cos(this.angle)*this.acc;
+				this.vy += Math.sin(this.angle)*this.acc;
+			}
+		} else if (pointOfRef == "camera") {
+			if (keyDownList["w"]) {
+				this.vy -= this.acc;
+			}
+			if (keyDownList["a"]) {
+				this.vx -= this.acc;
+			}
+			if (keyDownList["s"]) {
+				this.vy += this.acc;
+			}
+			if (keyDownList["d"]) {
+				this.vx += this.acc;
+			}
+		}
+		
+		this.vx = Math.max(Math.min(this.vx * 0.99, this.speedMax), -this.speedMax);
+		this.vy = Math.max(Math.min(this.vy * 0.99, this.speedMax), -this.speedMax);
+		
+		this.x += this.vx;
+		this.y += this.vy;
+	}
+	
+	this.think = function() {
+		// Shoot
+		if (Date.now() - this.lastBulletTime > 1000 / this.rate && mouse.down) {
+			this.lastBulletTime = Date.now();
+			this.shoot();
+		}
+		
+		// Regen shield
+		if (Date.now() - this.lastHitTime > this.shieldCd && this.shield < this.shieldMax) {
+			this.shield += this.shieldRegen;
+			if (this.shield > this.shieldMax) {
+				this.shield = this.shieldMax;
+				sfx_shieldUp.play();
+			}
+		}
+		
+		// Change shield sprite
+		if (this.shield < 2) { this.shieldSprite = sShield(0); }
+		else if (this.shield < 3) { this.shieldSprite = sShield(1); }
+		else if (this.shield == this.shieldMax) { this.shieldSprite = sShield(2); }
+		else { this.shieldSprite = sShield(1); }
+	}
+	
+	this.shoot = function() {
+		sfx_laser1.play();
+		for (var i = 0; i < this.power; i++) {
+			var theta = player.angle + Math.PI/180*(-this.power/2 + 0.5 + i)*5;
+			bulletList.push(new Bullet(theta));
+		}
+	}
+}
+var player = new Player();
+
+function Base() {
+	this.x = 0;
+	this.y = 0;
+	this.angle = 0;
+	
+	this.sprite = sBase;
+	this.shieldSprite = sShield(2);
+	this.shieldSize = 0;
+	this.w = this.sprite.width;
+	this.h = this.sprite.height;
+	this.r = Math.round((this.w + this.h) / 4)*3;
+	
+	this.draw = function() {
+		ctx.save();
+		ctx.translate(cvs.width/2 + this.x - player.x, cvs.height/2 + this.y - player.y);
+		ctx.rotate(this.angle);
+		ctx.drawImage(this.sprite, -this.sprite.width/2, -this.sprite.height/2);
+		var img = this.shieldSprite;
+		var x = img.width*this.shieldSize*2;
+		var y = img.height*this.shieldSize*2;
+		ctx.drawImage(img, -x/2, -y/2, x, y);
+		ctx.restore();
+		
+		this.angle += Math.PI/180
+		
+		drawEdgeIcon(this);
+		
+		if (distBetween(this, player) <= this.r) {
+			player.hp = player.hpMax;
+			player.shield = player.shieldMax;
+			
+			if (this.shieldSize < 1) { this.shieldSize += 0.1; }
+		
+			var size = sUpgradeList.length;
+			for (var i = 0; i < size; i++) {
+				// Icon
+				var img = sUpgrade(i);
+				var x = cvs.width/2 - 100;
+				var y = cvs.height/2 - 40*(size/2 - i - 0.5);
+				ctx.drawImage(img, x - img.width/2, y - img.height/2);
+				
+				// Cost
+				ctx.font = "20px Future";
+				ctx.textAlign = "right";
+				ctx.fillStyle = "white";
+				ctx.fillText("$ " + upgradeList[i].cost, x - 20, y + 5);
+				
+				// Hover
+				if (mouse.x < x + 20 && mouse.y > y - 20 && mouse.y < y + 20) {
+					var x = cvs.width/2 + 100;
+					var y = cvs.height/2;
+				
+					// Icon
+					ctx.drawImage(img, x - img.width/2, y - img.height/2);
+					
+					// Name
+					ctx.font = "20px Future";
+					ctx.textAlign = "left";
+					ctx.fillStyle = "white";
+					ctx.fillText(upgradeList[i].name, x + 25, y + 5);
+					
+					// Lvl
+					ctx.font = "15px Future";
+					ctx.textAlign = "left";
+					ctx.fillStyle = "white";
+					ctx.fillText("Level " + upgradeList[i].lvl, x, y - 30);
+					
+					// Desc
+					ctx.font = "15px Future";
+					ctx.textAlign = "left";
+					ctx.fillStyle = "white";
+					ctx.fillText(upgradeList[i].desc, x, y + 40);
+					
+					// Special Desc
+					if (upgradeList[i].lvl == 5) { 
+						ctx.fillStyle = "gold";
+					} else {
+						ctx.fillStyle = "grey";
+					}
+					ctx.font = "15px Future";
+					ctx.textAlign = "left";
+					ctx.fillText("AT LEVEL 5", x, y + 55);
+					ctx.fillText(upgradeList[i].sdesc, x, y + 70);
+					ctx.fillText(upgradeList[i].sdesc2, x, y + 85);
+					
+					// Click
+					if (mouse.click) {
+						if (money >= upgradeList[i].cost) {
+							sfx_zap.play();
+							money -= upgradeList[i].cost;
+							upgradeList[i].effect();
+							if (upgradeList[i].lvl == 5) {
+								upgradeList[i].special();
+							}
+							upgradeList[i].lvl++;
+							upgradeList[i].cost = upgradeList[i].basecost*upgradeList[i].lvl**2;
+						}
+					}
+				}
+			}
+		} else {
+			if (this.shieldSize > 0) { this.shieldSize -= 0.1; }
+		}
+		this.shieldSize = Math.round(this.shieldSize*10)/10;
+	}
+}
+var base = new Base();
+
+var bulletList = [];
+function Bullet(angle) {
+	this.x = player.x;
+	this.y = player.y;
+	this.angle = angle;
+	this.speed = player.bulletSpeed;
+	this.vx = Math.sin(this.angle)*this.speed;
+	this.vy = -Math.cos(this.angle)*this.speed;
+	
+	this.sprite = sBullet;
+	this.size = player.bulletSize;
+	this.w = this.sprite.width;
+	this.h = this.sprite.height;
+	this.r = this.w/2*this.size;
+	
+	this.draw = function() {
+		ctx.save();
+		ctx.translate(cvs.width/2 + this.x - player.x, cvs.height/2 + this.y - player.y);
+		ctx.rotate(this.angle);
+		var x = this.w * this.size;
+		var y = this.h * this.size;
+		ctx.drawImage(this.sprite, -x/2, -y/2, x, y);
+		ctx.restore();
+	}
+	
+	this.move = function() {
+		this.x += this.vx;
+		this.y += this.vy;
+	}
+	
+	this.think = function() {
+		// Bullet > Delete
+		if (this.sprite == sBulletHit) {
+			if (this.w > 0.1) {
+				this.w = this.w*0.90;
+				this.h = this.h*0.90;
+			} else {
+				bulletList.splice(bulletList.indexOf(this), 1);
+			}
+		} else {
+			// Bullet hits Meteor
+			for (i in meteorList) {
+				if (distBetween(this, meteorList[i]) < meteorList[i].r + this.r) {
+					this.sprite = sBulletHit;
+					this.w = this.sprite.width;
+					this.h = this.sprite.height;
+					this.vx = 0;
+					this.vy = 0;
+					
+					meteorList[i].hp -= player.damage;
+					return
+				}
+			}
+			
+			// Bullet hits Enemy
+			for (i in enemyList) {
+				if (distBetween(this, enemyList[i]) < enemyList[i].r + this.r) {
+					this.sprite = sBulletHit;
+					this.w = this.sprite.width;
+					this.h = this.sprite.height;
+					this.vx = 0;
+					this.vy = 0;
+					
+					enemyList[i].hp -= player.damage;
+					enemyList[i].chase = true;
+					return
+				}
+			}
+			
+			// Bullet hits Enemy Boss
+			if (distBetween(this, enemyBoss) < enemyBoss.r + this.r && enemyBoss.chase && !enemyBoss.dead) {
+				this.sprite = sBulletHit;
+				this.w = this.sprite.width;
+				this.h = this.sprite.height;
+				this.vx = 0;
+				this.vy = 0;
+				
+				enemyBoss.hp -= player.damage;
+				return
+			}
+			
+			// Bullet hits Enemy Base
+			if (distBetween(this, enemyBase) < enemyBase.r + this.r) {
+				this.sprite = sBulletHit;
+				this.w = this.sprite.width;
+				this.h = this.sprite.height;
+				this.vx = 0;
+				this.vy = 0;
+				
+				enemyBase.hp -= player.damage;
+				return
+			}
+		}
+	}
+}
+
+var meteorList = [];
+var meteorDensity = function() {
+	return Math.floor(2*zoom**2);
+}
+var meteorSizes = ["tiny", "small", "med", "big"];
+function Meteor() {
+	var theta = Math.random()*Math.PI*2 - Math.PI;
+	var dist = (Math.random()*0.25 + 0.75) * exitRadius();
+	this.x = player.x + Math.sin(theta) * dist;
+	this.y = player.y - Math.cos(theta) * dist;
+	
+	this.size = randomFromArray(meteorSizes);
+	this.sprite = sMeteor(this.size);
+	this.w = this.sprite.width;
+	this.h = this.sprite.height;
+	this.r = Math.round((this.w + this.h) / 4);
+	this.hp = this.r;
+	
+	this.draw = function() {
+		ctx.save();
+		ctx.translate(cvs.width/2 + this.x - player.x, cvs.height/2 + this.y - player.y);
+		ctx.drawImage(this.sprite, -this.sprite.width/2, -this.sprite.height/2);
+		ctx.restore();
+	}
+	
+	this.move = function() {
+	
+	}
+	
+	this.think = function() {
+		if (this.hp <= 0) {
+			explode(this);
+			money += this.r;
+			score += this.r;
+			meteorList.splice(meteorList.indexOf(this), 1);
+		}
+	}
+}
+while (meteorList.length < meteorDensity()) {
+	meteorList.push(new Meteor());
+	meteorList[meteorList.length-1].x = (Math.random()*2-1)*exitRadius();
+	meteorList[meteorList.length-1].y = (Math.random()*2-1)*exitRadius();
+}
+
+var enemyList = [];
+var enemyDensity = function() {
+	return Math.floor(distBetween(base, player)/5000*zoom**2);
+}
+function Enemy(level) {
+	this.level = level;
+	
+	var theta = Math.random()*Math.PI*2 - Math.PI;
+	var dist = (Math.random()*0.25 + 0.75) * exitRadius();
+	this.x = player.x + Math.sin(theta) * dist;
+	this.y = player.y - Math.cos(theta) * dist;
+	
+	var theta = Math.random()*Math.PI*2 - Math.PI;
+	this.angle = theta;
+	this.acc = 0.1 * this.level;
+	this.speedMax = 3 * this.level;
+	this.vx = 0;
+	this.vy = 0;
+	this.rotation = Math.round(Math.random());
+	
+	this.size = this.level;
+	this.sprite = sEnemy(this.level-1);
+	this.w = this.sprite.width;
+	this.h = this.sprite.height;
+	this.r = Math.round((this.w + this.h) / 4 * this.size);
+	this.hp = 100 * this.level**3;
+	
+	this.chase = false;
+	this.rate = 1; // Rate of fire - Bullets per sec
+	this.power = this.level; // Number of Bullets
+	this.lastBulletTime = 0;
+	
+	this.draw = function() {
+		ctx.save();
+		ctx.translate(cvs.width/2 + this.x - player.x, cvs.height/2 + this.y - player.y);
+		ctx.rotate(this.angle + Math.PI);
+		var x = this.sprite.width * this.size;
+		var y = this.sprite.height * this.size;
+		ctx.drawImage(this.sprite, -x/2, -y/2, x, y);
+		ctx.restore();
+		
+		if (this.chase) { drawEdgeIcon(this) };
+	}
+	
+	this.move = function() {
+		if (this.chase) {
+			this.angle = angleBetween(this, player);
+			
+			// FORWARD
+			if (distBetween(this, player) > exitRadius()/2 - 50) {
+				this.vx += Math.sin(this.angle)*this.acc;
+				this.vy -= Math.cos(this.angle)*this.acc;
+				if (distBetween(this, player) > exitRadius()) {
+					this.chase = false;
+					this.vx = 0;
+					this.vy = 0;
+				}
+			// BACK
+			} else if (distBetween(this, player) < exitRadius()/2 - 100) {
+				this.vx -= Math.sin(this.angle)*this.acc;
+				this.vy += Math.cos(this.angle)*this.acc;
+			// LEFT
+			} else if (this.rotation) {
+				this.vx -= Math.cos(this.angle)*this.acc;
+				this.vy -= Math.sin(this.angle)*this.acc;
+			// RIGHT
+			} else {
+				this.vx += Math.cos(this.angle)*this.acc;
+				this.vy += Math.sin(this.angle)*this.acc;
+			}
+			
+			this.vx = Math.max(Math.min(this.vx * 0.99, this.speedMax), -this.speedMax);
+			this.vy = Math.max(Math.min(this.vy * 0.99, this.speedMax), -this.speedMax);
+		}
+	
+		this.x += this.vx;
+		this.y += this.vy;
+	}
+	
+	this.think = function() {
+		// If destroyed
+		if (this.hp <= 0) {
+			explode(this);
+			money += 500 * this.level**3;
+			score += 500 * this.level**3;
+			enemyList.splice(enemyList.indexOf(this), 1);
+		}
+		
+		// Move from Idle
+		if (distBetween(this, player) < exitRadius()*0.75 && this.vx == 0) {
+			this.vx = Math.sin(this.angle)*this.speedMax;
+			this.vy = -Math.cos(this.angle)*this.speedMax;
+		}
+		
+		// Chase player
+		if (distBetween(this, player) < exitRadius()/2) {
+			this.chase = true;
+			this.angle = angleBetween(this, player);
+		}
+		
+		// Shoot
+		if (Date.now() - this.lastBulletTime > 1000 / this.rate && this.chase) {
+			this.lastBulletTime = Date.now();
+			this.shoot();
+		}
+	}
+	
+	this.shoot = function () {
+		sfx_laser2.play();
+		for (var i = 0; i < this.power; i++) {
+			var theta = this.angle + Math.PI/180*(-this.power/2 + 0.5 + i)*5;
+			bulletList.push(new EnemyBullet(this.x, this.y, theta, this.level));
+		}
+	}
+}
+
+function EnemyBullet(x, y, angle, level) {
+	this.x = x;
+	this.y = y;
+	this.angle = angle;
+	this.speed = 5 + 2*level;
+	this.vx = Math.sin(this.angle)*this.speed;
+	this.vy = -Math.cos(this.angle)*this.speed;
+	
+	this.sprite = sEnemyBullet;
+	this.w = this.sprite.width;
+	this.h = this.sprite.height;
+	this.size = level;
+	this.r = this.w/2*this.size;
+	
+	this.draw = function() {
+		ctx.save();
+		ctx.translate(cvs.width/2 + this.x - player.x, cvs.height/2 + this.y - player.y);
+		ctx.rotate(this.angle);
+		var x = this.w * this.size;
+		var y = this.h * this.size;
+		ctx.drawImage(this.sprite, -x/2, -y/2, x, y);
+		ctx.restore();
+	}
+	
+	this.move = function() {
+		this.x += this.vx;
+		this.y += this.vy;
+	}
+	
+	this.think = function() {
+		// enemyBullet > Delete
+		if (this.sprite == sEnemyBulletHit) {
+			if (this.w > 0.1) {
+				this.w = this.w*0.90;
+				this.h = this.h*0.90;
+			} else {
+				bulletList.splice(bulletList.indexOf(this), 1);
+			}
+		} else {
+			// enemyBullet hits Player
+			// enemyBullet > Explodes, Player > Damaged
+			if (distBetween(this, player) < player.r + this.r) {
+				this.sprite = sEnemyBulletHit;
+				this.w = this.sprite.width;
+				this.h = this.sprite.height;
+				this.vx = 0;
+				this.vy = 0;
+				
+				if (player.shield < 1) {
+					sfx_twoTone.play();
+					damageTint = 0.2;
+					player.hp--;
+					if (player.hp == 0) {
+						gameOver = true;
+					}
+				} else {
+					shieldTint = 0.2;
+					player.shield--;
+					sfx_shieldDown.play();
+				}
+				
+				player.lastHitTime = Date.now();
+			}
+		}
+	}
+}
+
+function EnemyBase(level) {
+	this.level = level;
+
+	var theta = Math.random()*Math.PI*2 - Math.PI;
+	this.dist = 8000*this.level;
+	this.x = base.x + Math.sin(theta) * this.dist;
+	this.y = base.y - Math.cos(theta) * this.dist;
+	this.angle = 0;
+	
+	this.sprite = sEnemyBase;
+	this.shieldSprite = sShield(2);
+	this.shieldSize = 1;
+	this.w = this.sprite.width;
+	this.h = this.sprite.height;
+	this.r = Math.round((this.w + this.h) / 4)*3;
+	this.hp = 20000*this.level;
+	this.hpMax = 20000*this.level;
+	this.hpRegen = 100;
+	
+	this.rate = 0.2*this.level; // Rate of fire - Bullets per sec
+	this.power = 8; // Number of Bullets
+	this.lastBulletTime = 0;
+	
+	this.draw = function() {
+		ctx.save();
+		ctx.translate(cvs.width/2 + this.x - player.x, cvs.height/2 + this.y - player.y);
+		ctx.rotate(this.angle);
+		
+		ctx.drawImage(this.sprite, -this.sprite.width/2, -this.sprite.height/2);
+		var img = this.shieldSprite;
+		var x = img.width*this.shieldSize*2;
+		var y = img.height*this.shieldSize*2;
+		ctx.drawImage(img, -x/2, -y/2, x, y);
+		
+		ctx.strokeStyle = "red";
+		ctx.globalAlpha = 0.5;
+		ctx.beginPath();
+		ctx.lineWidth = 10;
+		ctx.arc(0, 0, exitRadius()*1.5, 0, 2 * Math.PI);
+		ctx.stroke();
+		
+		ctx.globalAlpha = 0.3;
+		ctx.beginPath();
+		ctx.lineWidth = 50;
+		ctx.arc(0, 0, exitRadius()*1.4, 0, 2 * Math.PI);
+		ctx.stroke();
+		
+		ctx.restore();
+		
+		this.angle += Math.PI/180
+		
+		drawEdgeIcon(this);
+	}
+	
+	this.think = function() {
+		// Shoot
+		if (Date.now() - this.lastBulletTime > 1000 / this.rate && enemyBoss.dead) {
+			this.lastBulletTime = Date.now();
+			this.shoot();
+		}
+	
+		// Engage
+		if (distBetween(this, player) < exitRadius()*1.5) {
+			enemyBoss.chase = true;
+		} else {
+			enemyBoss.chase = false;
+			enemyBoss.dead = false;
+			this.power = 8;
+		}
+		
+		// Shrinking shield
+		this.shieldSize = this.hp / this.hpMax;
+		var r = Math.round((this.w + this.h) / 4);
+		this.r = Math.max(r*3*this.shieldSize, r);
+		
+		// Invuln
+		if (this.hp < this.hpMax && !enemyBoss.dead) {
+			this.hp += this.hpRegen;
+			if (this.hp > this.hpMax) {
+				this.hp = this.hpMax;
+			}
+		}
+		
+		// If destroyed
+		if (this.hp <= 0) {
+			this.r = this.r*10;
+			explode(this);
+			money += 300000*this.level;
+			score += 300000*this.level;
+			enemyBase = new EnemyBase(this.level + 1);
+			enemyBoss = new EnemyBoss(this.level + 1);
+		}
+	}
+	
+	this.shoot = function () {
+		sfx_laser2.play();
+		for (var i = 0; i < this.power; i++) {
+			var theta = this.angle + Math.PI*2/this.power*i;
+			bulletList.push(new EnemyBullet(this.x, this.y, theta, 3));
+		}
+		if (this.power < 32) { this.power = this.power*2; }
+	}
+}
+var enemyBase = new EnemyBase(1);
+
+function EnemyBoss(level) {
+	this.level = level;
+
+	this.x = enemyBase.x;
+	this.y = enemyBase.y;
+	
+	this.angle = 0;
+	this.acc = 1*this.level;
+	this.speedMax = 10*this.level;
+	this.vx = 0;
+	this.vy = 0;
+	this.rotation = Math.round(Math.random());
+	
+	this.size = 4 + level;
+	this.sprite = sEnemyBoss;
+	this.w = this.sprite.width;
+	this.h = this.sprite.height;
+	this.r = Math.round((this.w + this.h) / 4 * this.size);
+	this.hp = 40000*this.level;
+	this.hpMax = 40000*this.level;
+	this.hpRegen = 100;
+	
+	this.chase = false;
+	this.charge = false;
+	this.dead = false;
+	this.chargeAngle = 0;
+	this.rate = 0.2*this.level; // Rate of fire - Bullets per sec
+	this.power = 6 + 2*this.level; // Number of Bullets
+	this.lastBulletTime = 0;
+	
+	this.draw = function() {
+		ctx.save();
+		if (this.dead) { ctx.globalAlpha = 0.2; }
+		ctx.translate(cvs.width/2 + this.x - player.x, cvs.height/2 + this.y - player.y);
+		if (this.charge) {
+			ctx.rotate(this.chargeAngle);
+		} else {
+			ctx.rotate(this.angle);
+		}
+		var x = this.sprite.width * this.size;
+		var y = this.sprite.height * this.size;
+		ctx.drawImage(this.sprite, -x/2, -y/2, x, y);
+		ctx.restore();
+		
+		if (this.chase) { drawEdgeIcon(this) };
+	}
+	
+	this.move = function() {
+		if (this.chase) {
+			this.angle = angleBetween(this, player);
+			
+			// FORWARD
+			if (distBetween(this, player) > exitRadius()/2 - 50) {
+				this.vx += Math.sin(this.angle)*this.acc;
+				this.vy -= Math.cos(this.angle)*this.acc;
+			// BACK
+			} else if (distBetween(this, player) < exitRadius()/2 - 100) {
+				this.vx -= Math.sin(this.angle)*this.acc;
+				this.vy += Math.cos(this.angle)*this.acc;
+			// LEFT
+			} else if (this.rotation) {
+				this.vx -= Math.cos(this.angle)*this.acc;
+				this.vy -= Math.sin(this.angle)*this.acc;
+			// RIGHT
+			} else {
+				this.vx += Math.cos(this.angle)*this.acc;
+				this.vy += Math.sin(this.angle)*this.acc;
+			}
+			
+			// CHARGE
+			if (this.charge) {
+				this.vx = Math.sin(this.chargeAngle)*this.speedMax*3;
+				this.vy = -Math.cos(this.chargeAngle)*this.speedMax*3;
+			} else {
+				this.vx = Math.max(Math.min(this.vx * 0.99, this.speedMax), -this.speedMax);
+				this.vy = Math.max(Math.min(this.vy * 0.99, this.speedMax), -this.speedMax);
+			}
+		
+		// Return to Base
+		} else {
+			this.angle = angleBetween(this, enemyBase);
+			this.vx += Math.sin(this.angle)*this.acc;
+			this.vy -= Math.cos(this.angle)*this.acc;
+			
+			if (distBetween(this, player) > exitRadius()) {
+				if (this.hp < this.hpMax) {
+					this.hp += this.hpRegen;
+					if (this.hp > this.hpMax) {
+						enemyBoss = new EnemyBoss(this.level);
+					}
+				}
+			}
+		}
+	
+		this.x += this.vx;
+		this.y += this.vy;
+	}
+	
+	this.think = function() {
+		// If destroyed
+		if (this.hp <= 0) {
+			explode(this);
+			this.dead = true;
+		}
+		
+		// Shoot
+		if (Date.now() - this.lastBulletTime > 1000 / this.rate && this.chase) {
+			this.lastBulletTime = Date.now();
+			this.shoot();
+		}
+		
+		// Uncharge
+		if (this.charge && distBetween(this, player) > exitRadius()/2 + 50) {
+			this.charge = false;
+		}
+	}
+	
+	this.shoot = function () {
+		sfx_laser2.play();
+		for (var i = 0; i < this.power; i++) {
+			var x = this.x + Math.cos(this.angle)*50*(3 - i);
+			var y = this.y + Math.sin(this.angle)*50*(3 - i);
+			bulletList.push(new EnemyBullet(x, y, this.angle, 5));
+		}
+		this.charge = true;
+		this.chargeAngle = this.angle;
+	}
+}
+var enemyBoss = new EnemyBoss(1);
+
+var upgradeList = [
+	new Upgrade("Swift", "+SPEED", "+ACCEL", "+BULLET SPD", 500, function() {
+		player.speedMax++;
+	}, function() {
+		player.acc = player.acc*2;
+		player.bulletSpeed = player.bulletSpeed*1.5;
+	}),
+	new Upgrade("Souls", "+HEALTH", "-HITBOX", "", 500, function() {
+		player.hpMax++;
+	}, function() {
+		player.r = Math.round(player.r*0.75);
+	}),
+	new Upgrade("Sigil", "+SHIELDS", "+REGEN", "-REGEN CD", 1000, function() {
+		player.shieldMax++;
+	}, function() {
+		player.shieldRegen = player.shieldRegen*2;
+		player.shieldCd = Math.round(player.shieldCd*0.75);
+	}),
+	new Upgrade("Shots", "+FIRE RATE", "+DAMAGE", "+BULLET SPD", 1500, function() {
+		player.rate++;
+	}, function() {
+		player.damage = Math.round(player.damage*1.5);
+		player.bulletSpeed = player.bulletSpeed*1.5;
+	}),
+	new Upgrade("Spray", "+BULLETS", "+DAMAGE", "+BULLET SIZE", 2000, function() {
+		player.power++;
+	}, function() {
+		player.damage = Math.round(player.damage*1.5);
+		player.bulletSize = player.bulletSize*2;
+	}),
+];
+function Upgrade(name, desc, sdesc, sdesc2, cost, effect, special) {
+	this.lvl = 1;
+	this.basecost = cost;
+	this.cost = cost;
+	this.name = name;
+	this.desc = desc;
+	this.sdesc = sdesc;
+	this.sdesc2 = sdesc2;
+	this.effect = effect;
+	this.special = special;
+}
+
+// Functions
+
+function angleBetween(a, b) {
+	var dy = b.y - a.y;
+	var dx = b.x - a.x;
+	var theta = Math.atan2(dy, dx) + Math.PI/2;
+	return theta;
+}
+
+cheat = function() {
+	money = 999999999;
+	player.speedMax = 10;
+	player.acc = 0.5;
+	player.shield = 26;
+	player.shieldMax = 26;
+	player.hp = 20;
+	player.hpMax = 20;
+	player.rate = 10;
+	player.power = 10;
+	player.damage = 50;
+}
+
+checkStatus = function() {
+	console.log(enemyBoss);
+}
+
+function clearBullets() {
+	var clearMode = "circle";
+	if (clearMode == "square") {
+		bulletList = bulletList.filter(function(value, index) {
+			return isWithinSquare(bulletList[index]);
+		});
+	} else if (clearMode == "circle") {
+		bulletList = bulletList.filter(function(value, index) {
+			return distBetween(bulletList[index], player) < exitRadius()*0.75;
+		});
+	} else { console.log("Invalid clearMode"); }
+}
+
+function distBetween(a, b) {
+	return Math.sqrt(Math.pow(a.x-b.x, 2) + Math.pow(a.y-b.y, 2));
+}
+
+function explode(obj) {
+	sfx_explode.play();
+	
+	/*
+	star.alpha = 1;
+	star.r = obj.r;
+	star.draw = function() {
+		ctx.fillStyle = "white";
+		ctx.beginPath();
+		ctx.arc(0, 0, this.r*(1-this.alpha), 0, 2 * Math.PI);
+		ctx.fill();
+	}
+	star.x = obj.x;
+	star.y = obj.y;
+	star.vx = 0;
+	star.vy = 0;
+	explosionList.push(star);
+	*/
+		
+	for (var i = 0; i < obj.r; i++) {
+		var star = {};
+		star.alpha = 0.5 + Math.random()*0.5;
+		star.draw = function() {
+			ctx.drawImage(sStar(), 0, 0);
+		}
+		var x = (Math.random() - 0.5)*2*obj.r;
+		var y = (Math.random() - 0.5)*2*obj.r;
+		star.x = obj.x + x;
+		star.y = obj.y + y;
+		star.vx = x/10;
+		star.vy = y/10;
+		explosionList.push(star);
+	}
+}
+
+function findEdgeBetween(a, b) {
+	var theta = angleBetween(a, b);
+	var distToEdge = cvs.width/2 - 30;
+	if (theta > -Math.PI/4 && theta <= Math.PI*1/4) { // UP
+		x = cvs.width/2 + distToEdge*Math.tan(theta);
+		y = cvs.height/2 - distToEdge;
+	} else if (theta > Math.PI/4 && theta <= Math.PI*3/4) { // RIGHT
+		x = cvs.width/2 + distToEdge;
+		y = cvs.height/2 - distToEdge/Math.tan(theta);
+	} else if (theta > Math.PI*3/4 && theta <= Math.PI*5/4) { // DOWN
+		x = cvs.width/2 - distToEdge*Math.tan(theta);
+		y = cvs.height/2 + distToEdge;
+	} else { // LEFT
+		x = cvs.width/2 - distToEdge;
+		y = cvs.height/2 + distToEdge/Math.tan(theta);
+	}
+	return {x:x, y:y};
+}
+
+function isWithinSquare(obj) {
+	var x = obj.x - player.x
+	var y = obj.y - player.y
+	return (Math.abs(x) < exitRadius()/2 && Math.abs(y) < exitRadius()/2);
+}
+
+function randomFromArray(a) {
+	return a[Math.floor(Math.random()*a.length)];
+}
+
+function spawnEnemies() {
+	enemyList = enemyList.filter(function(value, index) {
+		return distBetween(enemyList[index], player) < exitRadius();
+	});
+	
+	var enemyPower = 0;
+	var enemyLevelCount = [0, 0, 0, 0, 0, 0];
+	for (var i = 0; i < enemyList.length; i++) {
+		enemyPower += enemyList[i].level**2;
+		enemyLevelCount[enemyList[i].level]++;
+	}
+	
+	for (var i = 5; i > 0; i--) {
+		while (enemyPower + i**2 <= enemyDensity() && enemyLevelCount[i] < 3) {
+			enemyList.push(new Enemy(i));
+			enemyPower += i**2;
+			enemyLevelCount[i]++;
+		}
+	}
+}
+
+function spawnMeteors() {
+	meteorList = meteorList.filter(function(value, index) {
+		return distBetween(meteorList[index], player) < exitRadius();
+	});
+	while (meteorList.length < meteorDensity()) {
+		meteorList.push(new Meteor());
+	}
+}
+
+// Draw Functions
+
+function drawBackground() {
+	var img = bg[Math.floor(zoom - 1)];
+	if (zoom < 4) { var img2 = bg[Math.floor(zoom)]; }
+	
+	for (var y = -img.height*2 - (player.y/zoom*0.2 % img.height); y < cvs.height + img.height; y += img.height) {
+		for (var x = -img.width*2 - (player.x/zoom*0.2 % img.width); x < cvs.width +img.width; x += img.width) {
+			ctx.drawImage(img, x, y);
+			if (zoom < 4) {
+				ctx.globalAlpha = zoom%1;
+				ctx.drawImage(img2, x, y);
+				ctx.globalAlpha = 1;
+			}
+		}
+	}
+}
+
+var damageTint = 0;
+var shieldTint = 0;
+var startTint = 0;
+function drawForeground() {
+	// Damage Tint
+	if (damageTint) {
+		ctx.globalAlpha = damageTint;
+		ctx.fillStyle = "red";
+		ctx.fillRect(0, 0, cvs.width, cvs.height);
+		ctx.globalAlpha = 1.0;
+		
+		damageTint = damageTint*0.9;
+		if (damageTint < 0.01) { damageTint = 0; }
+	} else if (shieldTint) {
+		ctx.globalAlpha = shieldTint;
+		ctx.fillStyle = "blue";
+		ctx.fillRect(0, 0, cvs.width, cvs.height);
+		ctx.globalAlpha = 1.0;
+		
+		shieldTint = shieldTint*0.9;
+		if (shieldTint < 0.01) { shieldTint = 0; }
+	} else if (startTint) {
+		ctx.globalAlpha = startTint;
+		ctx.fillStyle = "white";
+		ctx.fillRect(0, 0, cvs.width, cvs.height);
+		ctx.globalAlpha = 1.0;
+		
+		startTint = startTint*0.9;
+		if (startTint < 0.01) { startTint = 0; }
+	}
+
+	// Money
+	ctx.font = "20px Future";
+	ctx.textAlign = "left";
+	ctx.fillStyle = "white";
+	ctx.fillText("$ " + money, 20, 35);
+	
+	// Lives
+	var img = sPlayerLife;
+	for (var i = 0; i < player.hp; i++) {
+		ctx.drawImage(img, i*(img.width/2 + 5) + 20, 45, img.width/2, img.height/2);
+	}
+	
+	// Shield
+	for (var i = 0; i <= player.shield-1; i++) {
+		if (i == 0) {
+			var img = sShieldIcon;
+		} else {
+			var img = sBlueIcon;
+		}
+		ctx.drawImage(img, i*img.width/2 + 20, 65, img.width/2, img.height/2);
+	}
+	
+	if (enemyBoss.chase) {
+		// Enemy Boss Health
+		var bar = Math.floor(enemyBoss.hp / enemyBoss.hpMax * 26);
+		for (var i = 0; i <= bar; i++) {
+			if (i == 0) {
+				var img = sRedShieldIcon;
+			} else {
+				var img = sRedIcon;
+			}
+			ctx.drawImage(img, i*img.width/2 + 20, cvs.height - 45 - img.height/2, img.width/2, img.height/2);
+		}
+		
+		// Enemy Base Health
+		var bar = Math.floor(enemyBase.hp / enemyBase.hpMax * 26);
+		for (var i = 0; i <= bar; i++) {
+			if (i == 0) {
+				var img = sShieldIcon;
+			} else {
+				var img = sBlueIcon;
+			}
+			ctx.drawImage(img, i*img.width/2 + 20, cvs.height - 45, img.width/2, img.height/2);
+		}
+	}
+	
+	// Mouse
+	//ctx.drawImage(sMouse, mouse.x, mouse.y);
+}
+
+function drawDebug() {
+	ctx.strokeStyle = "white";
+	ctx.beginPath();
+	ctx.arc(center.x, center.y, exitRadius(), 0, 2 * Math.PI);
+	ctx.stroke();
+	ctx.beginPath();
+	ctx.arc(center.x, center.y, exitRadius()*0.75, 0, 2 * Math.PI);
+	ctx.stroke();
+	ctx.strokeRect(center.x - exitRadius()/2, center.y - exitRadius()/2, exitRadius(), exitRadius());
+}
+
+function drawEdgeIcon(obj) {
+	if (!isWithinSquare(obj)) {
+		ctx.restore();
+		var edge = findEdgeBetween(player, obj);
+		ctx.font = "10px Future";
+		ctx.textAlign = "center";
+		ctx.fillStyle = "white";
+		ctx.fillText(Math.round(distBetween(obj, player)/100) + " m", edge.x, edge.y + 10);
+		var iconSize = 20;
+		ctx.drawImage(obj.sprite, edge.x - iconSize/2, edge.y - iconSize/2 - 10, iconSize, iconSize);
+		ctx.save();
+		ctx.scale(1/zoom, 1/zoom);
+		ctx.translate(cvs.width*(zoom/2-0.5), cvs.height*(zoom/2-0.5));
+	}
+}
+
+var explosionList = [];
+function drawExplosions() {
+	for (var i = 0; i < explosionList.length; i++) {
+		var obj = explosionList[i];
+		
+		ctx.save();
+		ctx.globalAlpha = obj.alpha;
+		ctx.translate(cvs.width/2 + obj.x - player.x, cvs.height/2 + obj.y - player.y);
+		obj.draw();
+		ctx.restore();
+		//ctx.globalAlpha = 1.0;
+		
+		obj.x += obj.vx;
+		obj.y += obj.vy;
+		
+		obj.alpha = obj.alpha*0.8;
+	}
+	
+	explosionList = explosionList.filter(function(value, index) {
+		return obj.alpha > 0.01;
+	});
+}
+
+function drawGameOver() {
+	ctx.globalAlpha = 0.7;
+	ctx.fillStyle = "black";
+	ctx.fillRect(0, 0, cvs.width, cvs.height);
+	ctx.globalAlpha = 1.0;
+	ctx.font = "30px Future";
+	ctx.textAlign = "center";
+	ctx.fillStyle = "white";
+	ctx.fillText("Game Over", cvs.width/2, cvs.height/2 - 100);
+	ctx.fillText("Click to continue", cvs.width/2, cvs.height/2 + 100);
+	ctx.font = "50px Future";
+	ctx.fillText(score, cvs.width/2, cvs.height/2);
+}
+
+function drawPause() {
+	ctx.globalAlpha = 0.7;
+	ctx.fillStyle = "black";
+	ctx.fillRect(0, 0, cvs.width, cvs.height);
+	ctx.globalAlpha = 1.0;
+	ctx.fillStyle = "white";
+	ctx.fillRect(cvs.width/2 - 30, cvs.height/2 - 30, 20, 60);
+	ctx.fillRect(cvs.width/2 + 10, cvs.height/2 - 30, 20, 60);
+}
+
+function drawTutorial() {
+	ctx.globalAlpha = 0.7;
+	ctx.fillStyle = "black";
+	ctx.fillRect(0, 0, cvs.width, cvs.height);
+	ctx.globalAlpha = 1.0;
+	ctx.font = "15px Future";
+	ctx.textAlign = "center";
+	ctx.fillStyle = "white";
+	var text = [
+		"WASD TO MOVE",
+		"MOUSE TO AIM",
+		"HOLD TO SHOOT",
+		"",
+		"",
+		"",
+		"DESTROY THINGS FOR CASH",
+		"RETURN TO BASE TO UPGRADE",
+		"THE FURTHER YOU GO",
+		"THE HARDER THE ENEMIES",
+		"",
+		"",
+		"ONLY BULLETS CAN HURT YOU",
+		"YOUR SHIELD REGENERATES",
+		"",
+		"IF YOU RUN OUT OF HEALTH",
+		"YOU LOSE",
+		"",
+		"",
+		"HOLD TO CONTINUE"
+	];
+	var x = cvs.width/2;
+	for (var i = 0; i < 20; i++) {
+		if (i < 3) { ctx.textAlign = "right"; x = cvs.width/2; }
+		else if (i < 10) { ctx.textAlign = "left"; x = cvs.width/2 - 80; }
+		else if (i < 19) { ctx.textAlign = "right"; x = cvs.width/2 + 100; }
+		else { ctx.textAlign = "center"; x = cvs.width/2; }
+		ctx.fillText(text[i], x, cvs.height/2 - 180 + i*20);
+	}
+	ctx.drawImage(sPlayer, cvs.width/2 + 30, cvs.height/2 - 200);
+	ctx.drawImage(sEnemy(4), cvs.width/2 - 200, cvs.height/2 - 70);
+	ctx.drawImage(sShieldIcon, cvs.width/2 + 120, cvs.height/2 + 50);
+	ctx.drawImage(sPlayerLife, cvs.width/2 + 120, cvs.height/2 + 110);
+	
+	if (startTint) {
+		ctx.globalAlpha = startTint;
+		ctx.fillStyle = "white";
+		ctx.fillRect(0, 0, cvs.width, cvs.height);
+		ctx.globalAlpha = 1.0;
+	}
+}
+
+// Game functions
+
+function tutorial() {
+	if (mouse.down) {
+		startTint += 0.01;
+	} else if (startTint > 0) {
+		startTint -= 0.02;
+		if (startTint < 0) { startTint = 0; }
+	}
+	drawTutorial();
+	
+	if (startTint > 1) {
+		startTint = 1;
+		window.requestAnimationFrame(game);
+	} else {
+		window.requestAnimationFrame(tutorial);
+	}
+}
+tutorial();
+
+function game() {
+	update();
+	draw();
+	
+	mouse.click = false;
+	
+	if (gameOver) {
+		sfx_lose.play();
+		damageTint = 0;
+		drawGameOver();
+		gameOver = false;
+		window.requestAnimationFrame(end);
+	} else if (cvs.matches(":focus")) {
+		window.requestAnimationFrame(game);
+	} else {
+		drawPause();
+		window.requestAnimationFrame(pause);
+	}
+}
+
+function end() {
+	if (mouse.click) {
+		money = 0;
+		score = 0;
+		for (var i = 0; i < upgradeList.length; i++) {
+			upgradeList[i].cost = upgradeList[i].basecost;
+			upgradeList[i].lvl = 1;
+		}
+		player = new Player();
+		enemyBase = new EnemyBase(8000);
+		mouse.click = false;
+		window.requestAnimationFrame(tutorial);
+	} else {
+		window.requestAnimationFrame(end);
+	}
+}
+
+function pause() {
+	if (cvs.matches(":focus")) {
+		window.requestAnimationFrame(game);
+	} else {
+		window.requestAnimationFrame(pause);
+	}
+}
+
+function draw() {
+	drawBackground();
+	
+	ctx.save();
+	ctx.scale(1/zoom, 1/zoom);
+	ctx.translate(cvs.width*(zoom/2-0.5), cvs.height*(zoom/2-0.5));
+	
+	drawDebug();
+	drawExplosions();
+	
+	for (i in meteorList) {
+		meteorList[i].draw();
+	}
+	
+	enemyBase.draw();
+	
+	for (i in enemyList) {
+		enemyList[i].draw();
+	}
+	
+	enemyBoss.draw();
+	
+	for (i in bulletList) {
+		bulletList[i].draw();
+	}
+	
+	base.draw();
+	player.draw();
+	
+	ctx.restore();
+	
+	drawForeground();
+}
+
+function update() {
+	var dist = distBetween(base, player);
+	var z = [300, 5000, 20000];
+	var trans = 200;
+	if (dist < z[0]) {
+		zoom = 1;
+	} else if (dist < z[0] + trans) {
+		zoom = 1 + (dist - z[0])/trans;
+	} else if (dist < z[1]) {
+		zoom = 2;
+	} else if (dist < z[1] + trans) {
+		zoom = 2 + (dist - z[1])/trans;
+	} else if (dist < z[2]) {
+		zoom = 3;
+	} else if (dist < z[2] + trans) {
+		zoom = 3 + (dist - z[2])/trans;
+	} else {
+		zoom = 4;
+	}
+
+	player.move();
+	player.think();
+	
+	for (i in bulletList) {
+		bulletList[i].move();
+		bulletList[i].think();
+	}
+	
+	enemyBase.think();
+	
+	for (i in meteorList) {
+		meteorList[i].move();
+		meteorList[i].think();
+	}
+	
+	if (!enemyBoss.dead) { 
+		enemyBoss.move();
+		enemyBoss.think();
+	}
+
+	for (i in enemyList) {
+		enemyList[i].move();
+		enemyList[i].think();
+	}
+	
+	clearBullets();
+	spawnMeteors();
+	spawnEnemies();
+}
+
+// Key Detection
+
+var keyDownList = {};
+document.addEventListener("keydown", function(e) {
+	if (keyDownList[e.key]) return;
+	keyDownList[e.key] = true;
+});
+
+document.addEventListener("keyup", function(e) {
+	keyDownList[e.key] = false;
+});
+
+// Mouse Detection
+
+document.addEventListener("mousemove", function(e) {
+	var rect = cvs.getBoundingClientRect();
+	mouse.x = e.clientX - rect.left;
+	mouse.y = e.clientY - rect.top;
+});
+
+document.addEventListener("mousedown", function(e) {
+	mouse.down = true;
+	mouse.click = true;
+});
+
+document.addEventListener("mouseup", function(e) {
+	mouse.down = false;
+});
+
+}
+
+</script>
+</html>
